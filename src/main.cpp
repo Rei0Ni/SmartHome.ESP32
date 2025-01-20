@@ -1,18 +1,28 @@
 #include <Arduino.h>
+// #include <Adafruit_Sensor.h>
+#include <WiFi.h>
 
-// put function declarations here:
-int myFunction(int, int);
+
+
+#ifndef WifiManagerService_h
+#include <WifiManagerService.h>
+#endif
+
+// will be moved to RestApi later
+#ifndef _ESPAsyncWebServer_H_
+#include <ESPAsyncWebServer.h>
+#endif
+
+AsyncWebServer server(2826);
+WifiManagerService wm;
 
 void setup() {
-  // put your setup code here, to run once:
-  int result = myFunction(2, 3);
+  wm.Initialize("P@ssw0rd");
+
+  // will be moved to RestApi later
+  server.begin();
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-}
-
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
+  
 }
