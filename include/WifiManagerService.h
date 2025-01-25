@@ -1,9 +1,8 @@
-#ifndef WiFiManager_h
-#include <WiFiManager.h>
-#endif
-
 #ifndef WifiManagerService_h
-#define WifiManagerServcie_h
+#define WifiManagerService_h
+
+#include <WiFiManager.h>
+
 // WifiManagerService
 class WifiManagerService
 {
