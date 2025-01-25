@@ -4,19 +4,19 @@
 
 
 
-#ifndef WifiManagerService_h
 #include <WifiManagerService.h>
-#endif
+#include <SerialService.h>
 
 // will be moved to RestApi later
-#ifndef _ESPAsyncWebServer_H_
 #include <ESPAsyncWebServer.h>
-#endif
+
 
 AsyncWebServer server(2826);
 WifiManagerService wm;
+SerialService ss(&wm);
 
 void setup() {
+  ss.Initialize(115200, &server);
   wm.Initialize("P@ssw0rd");
 
   // will be moved to RestApi later
@@ -24,5 +24,9 @@ void setup() {
 }
 
 void loop() {
+  ss.printToAll("Hello World");
+  delay(1000);
   
+  // mandatory for webserial
+  ss.loop();
 }
