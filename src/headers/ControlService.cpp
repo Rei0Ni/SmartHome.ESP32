@@ -51,8 +51,9 @@ void ControlService::configurePins()
 ControlService::ControlService(SerialService *sh)
 {
     this->sh = sh;
-    declarePin("LED_1", 18, GPIO_MODE_INPUT_OUTPUT);
-    declarePin("LED_2", 19, GPIO_MODE_INPUT_OUTPUT);
+    declarePin("LED_1", 18, OUTPUT);
+    declarePin("LED_2", 19, OUTPUT);
+    configurePins();
 }
 
 ControlService::~ControlService()
@@ -76,14 +77,29 @@ void ControlService::handleCommand(JsonDocument doc, JsonDocument &response) {
             
             // Execute the command
             if (strcmp(function_name, "toggle") == 0) {
+                if (!parameters.containsKey("state")) {
+                    response["status"] = "error";
+                    response["message"] = "Missing 'state' parameter";
+                    continue;
+                }
                 const char *state = parameters["state"];
+
                 if (state) {
                     int pin = getPinValue(device_id);
+                    if (pin == -1) {
+                        response["status"] = "error";
+                        response["message"] = "Invalid device ID";
+                        continue; // Skip to next device
+                    }
                     int level = !strcmp(state, "on") ? HIGH : LOW;
-                    this->toggle(pin, level);
+                    if (this->toggle(pin, level)) {
+                        response["status"] = "Success";
+                        response["message"] = String("Toggled to ") + state;
+                    } else {
+                        response["status"] = "error";
+                        response["message"] = "Toggle failed";
+                    }
                 }
-                response["status"] = "Success";
-                response["message"] = String("Toggled to ") + state;
             } else {
                 Serial.println("  Unknown function!");
                 response["status"] = "error";
