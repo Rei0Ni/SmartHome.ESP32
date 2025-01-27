@@ -16,7 +16,7 @@ bool ControlService::toggle(int pin, int state)
     }
     catch(const exception& e)
     {
-        sh->printToAll("Error while toggling device state: %S", e.what());
+        ss->printToAll("Error while toggling device state: %S", e.what());
         return false;
     }
     
@@ -48,9 +48,9 @@ void ControlService::configurePins()
     }
 }
 
-ControlService::ControlService(SerialService *sh)
+ControlService::ControlService(SerialService *ss)
 {
-    this->sh = sh;
+    this->ss = ss;
     declarePin("LED_1", 18, OUTPUT);
     declarePin("LED_2", 19, OUTPUT);
     configurePins();
@@ -77,7 +77,7 @@ void ControlService::handleCommand(JsonDocument doc, JsonDocument &response) {
             
             // Execute the command
             if (strcmp(function_name, "toggle") == 0) {
-                if (!parameters.containsKey("state")) {
+                if (parameters["state"].isNull()) {
                     response["status"] = "error";
                     response["message"] = "Missing 'state' parameter";
                     continue;

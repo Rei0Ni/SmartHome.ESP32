@@ -30,7 +30,7 @@ class SerialService;  // Forward declaration
 class ControlService
 {
 private:
-    SerialService *sh;
+    SerialService *ss;
 
     std::vector<PinEntry> pinTable;
 
@@ -39,7 +39,7 @@ private:
     int getPinValue(const char *pinName);
     
 public:
-    ControlService(SerialService *sh);
+    ControlService(SerialService *ss);
     ~ControlService();
     void handleCommand(JsonDocument doc, JsonDocument &response);
     void configurePins();
