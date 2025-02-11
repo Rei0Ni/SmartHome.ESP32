@@ -97,8 +97,18 @@ void SerialService::loop()
 /// @param command string that may contain a command to be executed
 void SerialService::commandHandler(String command)
 {
-    if(command == "/wifi reset"){
+    if(command == "/help") {
+        printToAll("Available commands:");
+        printToAll("/wifi reset - Reset network settings");
+        printToAll("/system info - Show device information");
+    }
+    else if(command == "/system info") {
+        printToAll("Chip ID: %d\nChip Revision: %d\nFree heap: %d bytes", ESP.getChipModel(), ESP.getChipRevision(), ESP.getFreeHeap());
+    }else if(command == "/wifi reset"){
         wm->resetAndRestart();
+    }
+    else {
+        printToAll("Unknown command: %s", command.c_str());
     }
 }
 
