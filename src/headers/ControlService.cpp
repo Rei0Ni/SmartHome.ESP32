@@ -6,7 +6,10 @@
 
 using namespace std;
 
-
+/// @brief Toggles the state of a device pin
+/// @param pin The pin number to toggle
+/// @param state The state to set the pin to (HIGH or LOW)
+/// @return true if the operation was successful, false otherwise
 bool ControlService::toggle(int pin, int state)
 {
     try
@@ -22,13 +25,22 @@ bool ControlService::toggle(int pin, int state)
     
 }
 
-// Modified declarePin to use area and deviceId for nested map
+/// @brief Declares a pin for a device in a specific area
+/// @param areaId The ID of the area
+/// @param deviceId The ID of the device
+/// @param value The pin number
+/// @param mode The mode of the pin (INPUT, OUTPUT, etc.)
+/// @param type The type of the device
 void ControlService::declarePin(const char *areaId, const char *deviceId, int value, int mode, DeviceType type)
 {
     DeviceEntry entry = {deviceId, value, mode, type}; // DeviceId as name in PinEntry
     areaDevicesMap[areaId][deviceId] = entry; // Insert into nested map
 }
 
+/// @brief Gets the pin value for a specific device in a specific area
+/// @param areaId The ID of the area
+/// @param deviceId The ID of the device
+/// @return The pin value, or -1 if the area or device is not found
 int ControlService::getPinValue(const char *areaId, const char *deviceId)
 {
     if (areaDevicesMap.count(areaId)) { // Check if area exists
@@ -43,6 +55,7 @@ int ControlService::getPinValue(const char *areaId, const char *deviceId)
     return -1; // Return -1 if area or deviceId not found
 }
 
+/// @brief Configures the pins for all declared devices
 void ControlService::configurePins()
 {
     for (auto const& areaPair : areaDevicesMap) { // Iterate through areas
@@ -52,6 +65,8 @@ void ControlService::configurePins()
     }
 }
 
+/// @brief Constructor for ControlService
+/// @param ss Pointer to the SerialService instance
 ControlService::ControlService(SerialService *ss)
 {
     this->ss = ss;
@@ -60,10 +75,14 @@ ControlService::ControlService(SerialService *ss)
     configurePins();
 }
 
+/// @brief Destructor for ControlService
 ControlService::~ControlService()
 {
 }
 
+/// @brief Handles a command received in JSON format
+/// @param doc The JSON document containing the command
+/// @param response The JSON document to store the response
 void ControlService::handleCommand(JsonDocument doc, JsonDocument &response) {
     // Extract the area
     const char *areaId = doc["area"];

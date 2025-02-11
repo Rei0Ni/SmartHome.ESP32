@@ -32,6 +32,10 @@
 //     // <Add your own code here>
 // }
 
+/// @brief Constructor for RestAPI
+/// @param cs Pointer to the ControlService instance
+/// @param ss Pointer to the SerialService instance
+/// @param server Pointer to the AsyncWebServer instance
 RestAPI::RestAPI(ControlService *cs, SerialService *ss, AsyncWebServer *server)
 {
     this->server = server;
@@ -39,10 +43,12 @@ RestAPI::RestAPI(ControlService *cs, SerialService *ss, AsyncWebServer *server)
     this->cs = cs;
 }
 
+/// @brief Destructor for RestAPI
 RestAPI::~RestAPI()
 {
 }
 
+/// @brief Sets up the API endpoints
 void RestAPI::setupApi()
 {
     server->on("/api/command/send", HTTP_POST, [this](AsyncWebServerRequest *request)
@@ -63,6 +69,8 @@ void RestAPI::setupApi()
     server->begin();
 }
 
+/// @brief Handles the command request
+/// @param request Pointer to the AsyncWebServerRequest instance
 void RestAPI::commandOnRequest(AsyncWebServerRequest *request)
 {
 
@@ -71,6 +79,12 @@ void RestAPI::commandOnRequest(AsyncWebServerRequest *request)
     //  request->send(200, "application/json", "{\"status\":\"success\"}");
 }
 
+/// @brief Handles the body of the command request
+/// @param request Pointer to the AsyncWebServerRequest instance
+/// @param data Pointer to the data received
+/// @param len Length of the data received
+/// @param index Index of the data chunk
+/// @param total Total size of the data
 inline void RestAPI::commandOnBody(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total)
 {
     // Check request method
