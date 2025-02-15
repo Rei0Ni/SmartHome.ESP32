@@ -106,6 +106,8 @@ void SerialService::commandHandler(String command)
         printToAll("Chip ID: %d\nChip Revision: %d\nFree heap: %d bytes", ESP.getChipModel(), ESP.getChipRevision(), ESP.getFreeHeap());
     }else if(command == "/wifi reset"){
         wm->resetAndRestart();
+    }else if(command == "/wifi info"){
+        printToAll("IP Address: %s", WiFi.localIP().toString());
     }
     else {
         printToAll("Unknown command: %s", command.c_str());
