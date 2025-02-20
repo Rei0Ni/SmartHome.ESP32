@@ -1,47 +1,53 @@
-#include <ArduinoJson.h>
-#include <vector>
-#include <map>
-
-#ifndef SerialService_h
-#include <SerialService.h>
-#endif
-
+// ControlService.h - Header file for the ControlService class
 #ifndef ControlService_h
 #define ControlService_h
 
-// Define pin types
+#include <ArduinoJson.h>
+#include <vector>
+#include <string>
+#include <map>
+
+#ifndef SerialService_h
+#include <SerialService.h> // Include SerialService header
+#endif
+
+// Define DeviceType enum to categorize device types
 typedef enum {
-    PIN_TYPE_LED,
-    PIN_TYPE_DHT_SENSOR,
-    PIN_TYPE_FAN,
-    PIN_TYPE_RELAY,
-    PIN_TYPE_OTHER
+    PIN_TYPE_LED,       // LED device
+    PIN_TYPE_DHT_SENSOR, // DHT temperature/humidity sensor (example - not directly controlled by toggle/setspeed)
+    PIN_TYPE_FAN,       // Fan device (PWM speed control)
+    PIN_TYPE_RELAY,     // Relay device (ON/OFF control)
+    PIN_TYPE_OTHER      // Other device type
 } DeviceType;
 
-// Structure for the lookup table
+// Structure to represent a device entry in the areaDevicesMap
 typedef struct
 {
-  const char *name; // Macro name as a string
-  int value;        // Macro value
-  int mode;      // Pin mode (input/output)
-  DeviceType type;      // Pin type (e.g., LED, SENSOR, FAN)
+    const char *deviceId; // Unique identifier for the device
+    int value;           // Pin number connected to the device (or Enable pin for PWM)
+    int mode;            // Pin mode (INPUT, OUTPUT, etc.)
+    DeviceType type;     // Type of the device (from DeviceType enum)
 } DeviceEntry;
 
-class SerialService;  // Forward declaration
+class SerialService; // Forward declaration of SerialService class
 
 class ControlService
 {
 private:
     SerialService *ss;
-
-     // Use a nested map: area-id -> (device_id -> DeviceEntry)
     std::map<std::string, std::map<std::string, DeviceEntry>> areaDevicesMap;
 
+    // PWM configuration parameters (moved to private members for easy adjustment)
+    const int pwmChannel = 0;        // LEDC PWM channel (0-15)
+    const int pwmResolutionBits = 8; // PWM resolution (bits, e.g., 8 for 0-255)
+    int pwmFrequencyHz = 30000;     // PWM frequency in Hertz (e.g., 20kHz) - **Adjust this value**
+
     bool toggle(int pin, int state);
-    // Modified declarePin and getPinValue for the map structure
+    bool controlFanSpeed(int pin, int speed);
     void declarePin(const char *areaId, const char *deviceId, int value, int mode, DeviceType type);
-    int getPinValue(const char *areaId, const char *deviceId); // Get pin by area and deviceId
-    
+    int getPinValue(const char *areaId, const char *deviceId);
+    void setupPWM(); // New function to setup LEDC PWM
+
 public:
     ControlService(SerialService *ss);
     ~ControlService();
@@ -49,4 +55,4 @@ public:
     void configurePins();
 };
 
-#endif
+#endif // ControlService_h
