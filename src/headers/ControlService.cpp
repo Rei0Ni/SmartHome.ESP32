@@ -1,4 +1,3 @@
-// ControlService.cpp - Implementation file (Modified for higher PWM frequency)
 #include "ControlService.h"
 #include <cstring>
 
@@ -20,9 +19,10 @@ void ControlService::setupPWM() {
 bool ControlService::toggle(int pin, int state) {
     try {
         digitalWrite(pin, state);
+        digitalPinStates[pin] = state; // Store the digital pin state
         return true;
     } catch (const exception& e) {
-        ss->printToAll("Error while toggling device state: %S", e.what());
+        // ss->printToAll("Error while toggling device state: %S", e.what());
         return false;
     }
 }
@@ -34,22 +34,16 @@ bool ControlService::controlFanSpeed(int pin, int speedPercentage) {
             // Map the 0-100 speed percentage to the 0-255 PWM range
             int pwmValue = ::map(speedPercentage, 0, 100, 0, 255);
 
-            // // Optional: Apply minimum speed logic *after* mapping, if needed
-            // int minSpeedPWM = 80; // Minimum PWM value (0-255) - adjust as needed
-            // if (pwmValue > 0 && pwmValue < minSpeedPWM) {
-            //     pwmValue = minSpeedPWM;
-            //     ss->printToAll("Speed percentage too low, setting to minimum PWM: %d", minSpeedPWM);
-            // }
-
             // Use ledcWrite with the mapped PWM value
             ledcWrite(pwmChannel, pwmValue);
+            fanSpeeds[pin] = speedPercentage; // Store the fan speed
             return true;
         } else {
-            ss->printToAll("Error: Invalid fan speed percentage. Must be between 0 and 100.");
+            // ss->printToAll("Error: Invalid fan speed percentage. Must be between 0 and 100.");
             return false;
         }
     } catch (const exception& e) {
-        ss->printToAll("Error while controlling fan speed: %S", e.what());
+        // ss->printToAll("Error while controlling fan speed: %S", e.what());
         return false;
     }
 }
@@ -66,13 +60,24 @@ int ControlService::getPinValue(const char *areaId, const char *deviceId) {
         if (areaDevicesMap[areaId].count(deviceId)) {
             return areaDevicesMap[areaId][deviceId].value;
         } else {
-            ss->printToAll("Device ID '%s' not found in area '%s'", deviceId, areaId);
+            // ss->printToAll("Device ID '%s' not found in area '%s'", deviceId, areaId);
         }
     } else {
-        ss->printToAll("Area '%s' not found", areaId);
+        // ss->printToAll("Area '%s' not found", areaId);
     }
     return -1;
 }
+
+/// @brief Gets device type (new function)
+DeviceType ControlService::getDeviceType(const char *areaId, const char *deviceId) {
+    if (areaDevicesMap.count(areaId)) {
+        if (areaDevicesMap[areaId].count(deviceId)) {
+            return areaDevicesMap[areaId][deviceId].type;
+        }
+    }
+    return PIN_TYPE_OTHER; // Default to generic if not found
+}
+
 
 /// @brief Configures pin modes (same as before)
 void ControlService::configurePins() {
@@ -94,7 +99,7 @@ ControlService::ControlService(SerialService *ss) : ss(ss) { // Use initializer 
     // Declare devices - Using pin 23 for PWM fan control (make sure pin 23 is still connected to L298N ENA)
     declarePin("94c4dab3-19bf-448a-90d5-b9b00ec0cda0", "1bd59658-ba07-4520-b2c3-6cc7df314d4c", 18, OUTPUT, PIN_TYPE_LED);
     declarePin("94c4dab3-19bf-448a-90d5-b9b00ec0cda0", "ee72372d-253b-4775-85e4-9ff851a343a0", 19, OUTPUT, PIN_TYPE_LED);
-    declarePin("94c4dab3-19bf-448a-90d5-b9b00ec0cda0", "fan_1_id", 5, OUTPUT, PIN_TYPE_FAN); // Fan on pin 23 (PWM)
+    declarePin("94c4dab3-19bf-448a-90d5-b9b00ec0cda0", "fan_1_id", 5, OUTPUT, PIN_TYPE_FAN); // Fan on pin 5 (PWM)
 
     configurePins();
     // Attach PWM channel to the fan pin *after* configuring pin modes
@@ -128,21 +133,25 @@ void ControlService::handleCommand(JsonDocument doc, JsonDocument &response) {
         return;
     }
 
+    JsonArray devicesResponse = response.createNestedArray("devices"); // Create an array for device responses
+
     for (JsonObject device : doc["devices"].as<JsonArray>()) {
         const char *device_id = device["deviceId"];
         const char *function_name = device["function"];
+        JsonObject deviceResponse = devicesResponse.createNestedObject(); // Create response object for each device
+        deviceResponse["deviceId"] = device_id; // Add deviceId to device response
 
         if (device_id == nullptr || function_name == nullptr) {
-            response["status"] = "error";
-            response["message"] = "Missing 'deviceId' or 'function' in one of the device commands";
+            deviceResponse["status"] = "error";
+            deviceResponse["message"] = "Missing 'deviceId' or 'function' in device command";
             continue;
         }
 
         if (strcmp(function_name, "toggle") == 0) {
             JsonObject parameters = device["parameters"];
             if (!parameters.containsKey("state")) {
-                response["status"] = "error";
-                response["message"] = "Missing 'state' parameter for 'toggle' function";
+                deviceResponse["status"] = "error";
+                deviceResponse["message"] = "Missing 'state' parameter for 'toggle' function";
                 continue;
             }
 
@@ -151,23 +160,24 @@ void ControlService::handleCommand(JsonDocument doc, JsonDocument &response) {
 
             int pin = getPinValue(areaId, device_id);
             if (pin == -1) {
-                response["status"] = "error";
-                response["message"] = String("Invalid device ID '") + device_id + "' or area '" + areaId + "'";
+                deviceResponse["status"] = "error";
+                deviceResponse["message"] = String("Invalid device ID '") + device_id + "' or area '" + areaId + "'";
                 continue;
             }
 
             if (this->toggle(pin, level)) {
-                response["status"] = "Success";
-                response["message"] = String("Toggled device '") + device_id + "' in area '" + areaId + "' to state " + (state ? "on" : "off");
+                deviceResponse["status"] = "success";
+                deviceResponse["message"] = String("Toggled device '") + device_id + "' to state " + (state ? "on" : "off");
+                deviceResponse["power_state"] = (state ? "on" : "off"); // Add power_state to response
             } else {
-                response["status"] = "error";
-                response["message"] = String("Toggle failed for device '") + device_id + "' in area '" + areaId + "'";
+                deviceResponse["status"] = "error";
+                deviceResponse["message"] = String("Toggle failed for device '") + device_id + "'";
             }
         } else if (strcmp(function_name, "setspeed") == 0) {
             JsonObject parameters = device["parameters"];
             if (!parameters.containsKey("speed")) {
-                response["status"] = "error";
-                response["message"] = "Missing 'speed' parameter for 'setspeed' function";
+                deviceResponse["status"] = "error";
+                deviceResponse["message"] = "Missing 'speed' parameter for 'setspeed' function";
                 continue;
             }
 
@@ -175,22 +185,24 @@ void ControlService::handleCommand(JsonDocument doc, JsonDocument &response) {
 
             int pin = getPinValue(areaId, device_id);
             if (pin == -1) {
-                response["status"] = "error";
-                response["message"] = String("Invalid device ID '") + device_id + "' or area '" + areaId + "' for fan speed control";
+                deviceResponse["status"] = "error";
+                deviceResponse["message"] = String("Invalid device ID '") + device_id + "' or area '" + areaId + "' for fan speed control";
                 continue;
             }
 
             if (this->controlFanSpeed(pin, speedPercentage)) { // **Call controlFanSpeed with speedPercentage**
-                response["status"] = "Success";
-                response["message"] = String("Set fan '") + device_id + "' speed in area '" + areaId + "' to " + speedPercentage + "%"; // Update message to show percentage
+                deviceResponse["status"] = "success";
+                deviceResponse["message"] = String("Set fan '") + device_id + "' speed to " + speedPercentage + "%"; // Update message to show percentage
+                deviceResponse["fan_speed"] = speedPercentage; // Add fan_speed to response
+                deviceResponse["power_state"] = (speedPercentage > 0) ? "on" : "off"; // Add power_state to response
             } else {
-                response["status"] = "error";
-                response["message"] = String("Failed to set speed for fan '") + device_id + "' in area '" + areaId + "'";
+                deviceResponse["status"] = "error";
+                deviceResponse["message"] = String("Failed to set speed for fan '") + device_id + "'";
             }
         } else {
-            ss->printToAll("Unknown function '%s' for device '%s'", function_name, device_id);
-            response["status"] = "error";
-            response["message"] = "Unknown function!";
+            // ss->printToAll("Unknown function '%s' for device '%s'", function_name, device_id);
+            deviceResponse["status"] = "error";
+            deviceResponse["message"] = "Unknown function!";
         }
     }
 }
