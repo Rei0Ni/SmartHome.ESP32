@@ -16,10 +16,10 @@ SerialService::~SerialService()
 void SerialService::Initialize(int baud, AsyncWebServer *server)
 {
     Serial.begin(baud);
-    WebSerial.begin(server);
-    WebSerial.onMessage([this](uint8_t *data, size_t len) {
-        this->recvMsg(data, len);
-    });
+    // WebSerial.begin(server);
+    // WebSerial.onMessage([this](uint8_t *data, size_t len) {
+    //     this->recvMsg(data, len);
+    // });
 }
 
 /// @brief prints to both physical serial and webserial

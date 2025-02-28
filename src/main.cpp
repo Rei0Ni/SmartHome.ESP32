@@ -20,7 +20,13 @@ void setup() {
 }
 
 void loop() {
-  
+  // int touchValue = touchRead(4);
+
+  // ss.printToSerial("Touch value: %d\n", touchValue);
+  // if (touchValue > 100) {
+  //   ss.printToSerial("Touch value: %d\n", touchValue);
+  //   wm.resetAndRestart();
+  // }
   // mandatory for webserial
-  ss.loop();
+  // ss.loop();
 }
