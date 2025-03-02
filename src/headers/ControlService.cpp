@@ -1,4 +1,3 @@
-// ControlService.cpp - Implementation file (Modified for higher PWM frequency)
 #include "ControlService.h"
 #include <cstring>
 
@@ -7,6 +6,9 @@
 #endif
 
 #include <Arduino.h> // Make sure to include Arduino.h for ESP32 functions
+
+// Include DHT sensor library - Make sure you have installed the DHT sensor library in Arduino IDE Library Manager
+#include <DHT.h>
 
 using namespace std;
 
@@ -20,9 +22,10 @@ void ControlService::setupPWM() {
 bool ControlService::toggle(int pin, int state) {
     try {
         digitalWrite(pin, state);
+        digitalPinStates[pin] = state; // Store the digital pin state
         return true;
     } catch (const exception& e) {
-        ss->printToAll("Error while toggling device state: %S", e.what());
+        // ss->printToAll("Error while toggling device state: %S", e.what());
         return false;
     }
 }
@@ -34,44 +37,51 @@ bool ControlService::controlFanSpeed(int pin, int speedPercentage) {
             // Map the 0-100 speed percentage to the 0-255 PWM range
             int pwmValue = ::map(speedPercentage, 0, 100, 0, 255);
 
-            // // Optional: Apply minimum speed logic *after* mapping, if needed
-            // int minSpeedPWM = 80; // Minimum PWM value (0-255) - adjust as needed
-            // if (pwmValue > 0 && pwmValue < minSpeedPWM) {
-            //     pwmValue = minSpeedPWM;
-            //     ss->printToAll("Speed percentage too low, setting to minimum PWM: %d", minSpeedPWM);
-            // }
-
             // Use ledcWrite with the mapped PWM value
             ledcWrite(pwmChannel, pwmValue);
+            fanSpeeds[pin] = speedPercentage; // Store the fan speed
             return true;
         } else {
-            ss->printToAll("Error: Invalid fan speed percentage. Must be between 0 and 100.");
+            // ss->printToAll("Error: Invalid fan speed percentage. Must be between 0 and 100.");
             return false;
         }
     } catch (const exception& e) {
-        ss->printToAll("Error while controlling fan speed: %S", e.what());
+        // ss->printToAll("Error while controlling fan speed: %S", e.what());
         return false;
     }
 }
 
-/// @brief Declares a pin for a device (same as before)
+/// @brief Declares a pin for a device
 void ControlService::declarePin(const char *areaId, const char *deviceId, int value, int mode, DeviceType type) {
     DeviceEntry entry = {deviceId, value, mode, type};
     areaDevicesMap[areaId][deviceId] = entry;
+
+    if (type == PIN_TYPE_DHT11) {
+        dhtSensors[value] = new DHT(value, DHT11); // Initialize DHT sensor for DHT11 type
+        dhtSensors[value]->begin(); // Start DHT sensor
+    } else if ( type == PIN_TYPE_FAN) {
+        
+    }
 }
 
-/// @brief Gets pin value for a device (same as before)
+/// @brief Gets pin value for a device
 int ControlService::getPinValue(const char *areaId, const char *deviceId) {
     if (areaDevicesMap.count(areaId)) {
         if (areaDevicesMap[areaId].count(deviceId)) {
             return areaDevicesMap[areaId][deviceId].value;
-        } else {
-            ss->printToAll("Device ID '%s' not found in area '%s'", deviceId, areaId);
-        }
-    } else {
-        ss->printToAll("Area '%s' not found", areaId);
+        } 
     }
     return -1;
+}
+
+/// @brief Gets device type
+DeviceType ControlService::getDeviceType(const char *areaId, const char *deviceId) {
+    if (areaDevicesMap.count(areaId)) {
+        if (areaDevicesMap[areaId].count(deviceId)) {
+            return areaDevicesMap[areaId][deviceId].type;
+        }
+    }
+    return PIN_TYPE_OTHER; // Default to generic if not found
 }
 
 /// @brief Configures pin modes (same as before)
@@ -83,7 +93,26 @@ void ControlService::configurePins() {
     }
 }
 
-/// @brief Constructor (Modified to call setupPWM)
+/// @brief Reads temperature and humidity from DHT11 sensor
+bool ControlService::getDHT11Readings(int pin, float &temperature, float &humidity) {
+    if (dhtSensors.count(pin)) {
+        float h = dhtSensors[pin]->readHumidity();
+        float t = dhtSensors[pin]->readTemperature();
+
+        if (isnan(h) || isnan(t)) {
+            // ss->printToAll("Failed to read from DHT sensor!");
+            return false;
+        }
+
+        temperature = t;
+        humidity = h;
+        return true;
+    }
+    return false; // Sensor not found or initialized
+}
+
+
+/// @brief Constructor (Modified to call setupPWM and initialize DHT)
 ControlService::ControlService(SerialService *ss) : ss(ss) { // Use initializer list
     // Initialize SerialService pointer
     this->ss = ss; // No longer needed with initializer list
@@ -91,24 +120,32 @@ ControlService::ControlService(SerialService *ss) : ss(ss) { // Use initializer 
     // Initialize PWM setup using LEDC
     setupPWM();
 
-    // Declare devices - Using pin 23 for PWM fan control (make sure pin 23 is still connected to L298N ENA)
+    // Declare devices
     declarePin("94c4dab3-19bf-448a-90d5-b9b00ec0cda0", "1bd59658-ba07-4520-b2c3-6cc7df314d4c", 18, OUTPUT, PIN_TYPE_LED);
     declarePin("94c4dab3-19bf-448a-90d5-b9b00ec0cda0", "ee72372d-253b-4775-85e4-9ff851a343a0", 19, OUTPUT, PIN_TYPE_LED);
-    declarePin("94c4dab3-19bf-448a-90d5-b9b00ec0cda0", "fan_1_id", 5, OUTPUT, PIN_TYPE_FAN); // Fan on pin 23 (PWM)
+    declarePin("8dca5204-a0ac-4ec6-83f7-c3b8acdf6e5b", "891647d0-e5a8-4f02-bfce-a17facfa6e5c", 5, OUTPUT, PIN_TYPE_FAN); // Fan on pin 5 (PWM)
+    // Declare DHT11 sensor - Example: DHT11 on pin 4
+    declarePin("8dca5204-a0ac-4ec6-83f7-c3b8acdf6e5b", "9e569c3f-afed-41de-9758-99a7be8ce3d7", 4, INPUT_PULLUP, PIN_TYPE_DHT11); // DHT11 on pin 4
 
     configurePins();
     // Attach PWM channel to the fan pin *after* configuring pin modes
-    ledcAttachPin(getPinValue("94c4dab3-19bf-448a-90d5-b9b00ec0cda0", "fan_1_id"), pwmChannel); // Pin, Channel
+    ledcAttachPin(getPinValue("8dca5204-a0ac-4ec6-83f7-c3b8acdf6e5b", "891647d0-e5a8-4f02-bfce-a17facfa6e5c"), pwmChannel); // Pin, Channel
 }
 
-/// @brief Destructor (same as before)
-ControlService::~ControlService() {}
+/// @brief Destructor
+ControlService::~ControlService() {
+    // Clean up DHT sensor objects
+    for (auto const& [pin, dhtPtr] : dhtSensors) {
+        if (dhtPtr) {
+            delete dhtPtr;
+        }
+    }
+    dhtSensors.clear();
+}
 
-/// @brief Handles JSON commands (Modified - no changes in command handling logic itself)
+
+/// @brief Handles JSON commands
 void ControlService::handleCommand(JsonDocument doc, JsonDocument &response) {
-    // ... (handleCommand function - same logic as in the previous complete code) ...
-    // No changes needed in the command handling logic, just make sure it calls controlFanSpeed
-    // for "setspeed" function.
     const char *areaId = doc["areaId"];
     if (areaId == nullptr) {
         response["status"] = "error";
@@ -116,7 +153,7 @@ void ControlService::handleCommand(JsonDocument doc, JsonDocument &response) {
         return;
     }
 
-    if (!doc.containsKey("devices") || !doc["devices"].is<JsonArray>()) {
+    if (!doc["devices"].is<JsonArray>()) {
         response["status"] = "error";
         response["message"] = "Missing or invalid 'devices' array in command";
         return;
@@ -128,21 +165,25 @@ void ControlService::handleCommand(JsonDocument doc, JsonDocument &response) {
         return;
     }
 
+    JsonArray devicesResponse = response.createNestedArray("devices"); // Create an array for device responses
+
     for (JsonObject device : doc["devices"].as<JsonArray>()) {
         const char *device_id = device["deviceId"];
         const char *function_name = device["function"];
+        JsonObject deviceResponse = devicesResponse.add<JsonObject>(); // Create response object for each device
+        deviceResponse["deviceId"] = device_id; // Add deviceId to device response
 
         if (device_id == nullptr || function_name == nullptr) {
-            response["status"] = "error";
-            response["message"] = "Missing 'deviceId' or 'function' in one of the device commands";
+            deviceResponse["status"] = "error";
+            deviceResponse["message"] = "Missing 'deviceId' or 'function' in device command";
             continue;
         }
 
         if (strcmp(function_name, "toggle") == 0) {
             JsonObject parameters = device["parameters"];
             if (!parameters.containsKey("state")) {
-                response["status"] = "error";
-                response["message"] = "Missing 'state' parameter for 'toggle' function";
+                deviceResponse["status"] = "error";
+                deviceResponse["message"] = "Missing 'state' parameter for 'toggle' function";
                 continue;
             }
 
@@ -151,23 +192,24 @@ void ControlService::handleCommand(JsonDocument doc, JsonDocument &response) {
 
             int pin = getPinValue(areaId, device_id);
             if (pin == -1) {
-                response["status"] = "error";
-                response["message"] = String("Invalid device ID '") + device_id + "' or area '" + areaId + "'";
+                deviceResponse["status"] = "error";
+                deviceResponse["message"] = String("Invalid device ID '") + device_id + "' or area '" + areaId + "'";
                 continue;
             }
 
             if (this->toggle(pin, level)) {
-                response["status"] = "Success";
-                response["message"] = String("Toggled device '") + device_id + "' in area '" + areaId + "' to state " + (state ? "on" : "off");
+                deviceResponse["status"] = "success";
+                deviceResponse["message"] = String("Toggled device '") + device_id + "' to state " + (state ? "on" : "off");
+                deviceResponse["power_state"] = (state ? "on" : "off"); // Add power_state to response
             } else {
-                response["status"] = "error";
-                response["message"] = String("Toggle failed for device '") + device_id + "' in area '" + areaId + "'";
+                deviceResponse["status"] = "error";
+                deviceResponse["message"] = String("Toggle failed for device '") + device_id + "'";
             }
         } else if (strcmp(function_name, "setspeed") == 0) {
             JsonObject parameters = device["parameters"];
             if (!parameters.containsKey("speed")) {
-                response["status"] = "error";
-                response["message"] = "Missing 'speed' parameter for 'setspeed' function";
+                deviceResponse["status"] = "error";
+                deviceResponse["message"] = "Missing 'speed' parameter for 'setspeed' function";
                 continue;
             }
 
@@ -175,22 +217,98 @@ void ControlService::handleCommand(JsonDocument doc, JsonDocument &response) {
 
             int pin = getPinValue(areaId, device_id);
             if (pin == -1) {
-                response["status"] = "error";
-                response["message"] = String("Invalid device ID '") + device_id + "' or area '" + areaId + "' for fan speed control";
+                deviceResponse["status"] = "error";
+                deviceResponse["message"] = String("Invalid device ID '") + device_id + "' or area '" + areaId + "' for fan speed control";
                 continue;
             }
 
             if (this->controlFanSpeed(pin, speedPercentage)) { // **Call controlFanSpeed with speedPercentage**
-                response["status"] = "Success";
-                response["message"] = String("Set fan '") + device_id + "' speed in area '" + areaId + "' to " + speedPercentage + "%"; // Update message to show percentage
+                deviceResponse["status"] = "success";
+                deviceResponse["message"] = String("Set fan '") + device_id + "' speed to " + speedPercentage + "%"; // Update message to show percentage
+                deviceResponse["fan_speed"] = speedPercentage; // Add fan_speed to response
+                deviceResponse["power_state"] = (speedPercentage > 0) ? "on" : "off"; // Add power_state to response
             } else {
-                response["status"] = "error";
-                response["message"] = String("Failed to set speed for fan '") + device_id + "' in area '" + areaId + "'";
+                deviceResponse["status"] = "error";
+                deviceResponse["message"] = String("Failed to set speed for fan '") + device_id + "'";
             }
-        } else {
-            ss->printToAll("Unknown function '%s' for device '%s'", function_name, device_id);
-            response["status"] = "error";
-            response["message"] = "Unknown function!";
+        }  else if (strcmp(function_name, "getReadings") == 0) { // New function to get sensor readings
+            int pin = getPinValue(areaId, device_id);
+            if (pin == -1) {
+                deviceResponse["status"] = "error";
+                deviceResponse["message"] = String("Invalid device ID '") + device_id + "' or area '" + areaId + "' for sensor readings";
+                continue;
+            }
+
+            DeviceType type = getDeviceType(areaId, device_id);
+            if (type == PIN_TYPE_DHT11) {
+                float temperature = 0.0;
+                float humidity = 0.0;
+                if (getDHT11Readings(pin, temperature, humidity)) {
+                    deviceResponse["status"] = "success";
+                    deviceResponse["message"] = String("Readings for DHT11 sensor '") + device_id + "'";
+                    deviceResponse["temperature_celsius"] = temperature;
+                    deviceResponse["humidity_percent"] = humidity;
+                } else {
+                    deviceResponse["status"] = "error";
+                    deviceResponse["message"] = String("Failed to read from DHT11 sensor '") + device_id + "'";
+                }
+            } else {
+                deviceResponse["status"] = "error";
+                deviceResponse["message"] = String("Device '") + device_id + "' is not a sensor or not supported for readings";
+            }
+        }
+        else {
+            // ss->printToAll("Unknown function '%s' for device '%s'", function_name, device_id);
+            deviceResponse["status"] = "error";
+            deviceResponse["message"] = "Unknown function!";
         }
     }
+}
+
+/// @brief Gets all sensor data in JSON format for all areas
+/// @return A JSON string containing sensor data for all areas
+String ControlService::getAllSensorDataJson()
+{
+    JsonDocument responseDoc; // Changed to DynamicJsonDocument
+    responseDoc["status"] = "success";
+    responseDoc["message"] = "Sensor data retrieved successfully for all areas";
+    JsonArray areasArray = responseDoc.createNestedArray("areas");
+
+    for (auto const &areaPair : areaDevicesMap) // Iterate through each area in areaDevicesMap
+    {
+        const String &areaId = areaPair.first.c_str(); // Get areaId string
+        JsonObject areaObject = areasArray.createNestedObject();
+        areaObject["areaId"] = areaId;
+        JsonArray sensorsArray = areaObject.createNestedArray("sensors"); // Create sensors array for this area
+
+        for (auto const &devicePair : areaPair.second) // Iterate through devices in the current area
+        {
+            const DeviceEntry &deviceEntry = devicePair.second;
+            if (deviceEntry.type == PIN_TYPE_DHT11)
+            {
+                JsonObject sensorObject = sensorsArray.createNestedObject();
+                sensorObject["deviceId"] = deviceEntry.deviceId;
+                sensorObject["type"] = "DHT11"; // Hardcoded DHT11 type for now, can be improved
+
+                float temperature = 0.0;
+                float humidity = 0.0;
+                if (getDHT11Readings(deviceEntry.value, temperature, humidity))
+                {
+                    sensorObject["status"] = "success";
+                    sensorObject["temperature_celsius"] = temperature;
+                    sensorObject["humidity_percent"] = humidity;
+                }
+                else
+                {
+                    sensorObject["status"] = "error";
+                    sensorObject["message"] = "Failed to read sensor data";
+                }
+            }
+            // Add other sensor types here in future else-if blocks
+        }
+    }
+
+    String jsonString;
+    serializeJson(responseDoc, jsonString);
+    return jsonString;
 }

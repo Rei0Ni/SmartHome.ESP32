@@ -114,6 +114,13 @@ void RestAPI::setupApi()
         }
     });
 
+    server->on("/api/test_sensor_data", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        String sensorDataJson = cs->getAllSensorDataJson(); // Call getAllSensorDataJson directly
+        Serial.print("Test API - Sensor Data JSON: "); // Add serial print before sending
+        Serial.println(sensorDataJson);
+        request->send(200, "application/json", sensorDataJson);
+    });
+
     // ElegantOTA.begin(server);
     // ElegantOTA.setAuth("OTAdmin", "P@ssw0rd");
     // ElegantOTA.onStart([this]()
