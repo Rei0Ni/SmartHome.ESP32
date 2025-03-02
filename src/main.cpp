@@ -5,18 +5,21 @@
 #include <SerialService.h>
 #include <ControlService.h>
 #include <RestAPI.h>
+#include <MessageQueueService.h>
 
 AsyncWebServer server(2826);
 WifiManagerService wm;
 SerialService ss(&wm);
 ControlService cs(&ss);
 RestAPI RestApi(&cs, &ss, &server);
+MessageQueueService mq(&cs, &ss, 5000, "192.168.1.9", 1883, "sensor_data", "mqttuser", "P@ssw0rd", [] { return cs.getAllSensorDataJson(); });
 
 void setup() {
   ss.Initialize(115200, &server);
   wm.Initialize("P@ssw0rd");
 
   RestApi.setupApi();
+  mq.start();
 }
 
 void loop() {
