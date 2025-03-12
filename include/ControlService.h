@@ -15,6 +15,7 @@ enum DeviceType
     PIN_TYPE_LED,
     PIN_TYPE_FAN,
     PIN_TYPE_DHT11, // DHT11 Temperature/Humidity Sensor
+    PIN_TYPE_PIR,   // PIR Motion Sensor
     PIN_TYPE_OTHER
 };
 
@@ -61,6 +62,7 @@ public:
     bool toggle(int pin, int state);                                     // Toggle digital pin state
     bool controlFanSpeed(int pin, int speedPercentage);                  // Control fan speed using PWM
     bool getDHT11Readings(int pin, float &temperature, float &humidity); // Read DHT11 sensor data
+    bool getPIRState(int pin, bool &motionDetected);                     // Read PIR sensor state
 };
 
 #endif // ControlService_h

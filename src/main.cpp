@@ -18,6 +18,9 @@ void setup() {
   ss.Initialize(115200, &server);
   wm.Initialize("P@ssw0rd");
 
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, LOW); // Start with the LED off
+
   RestApi.setupApi();
   mq.start();
 }

@@ -59,6 +59,9 @@ void ControlService::declarePin(const char *areaId, const char *deviceId, int va
     if (type == PIN_TYPE_DHT11) {
         dhtSensors[value] = new DHT(value, DHT11); // Initialize DHT sensor for DHT11 type
         dhtSensors[value]->begin(); // Start DHT sensor
+    } else if (type == PIN_TYPE_PIR) {
+        // For a PIR sensor, set up the pin mode (e.g., INPUT)
+        // Any additional PIR-specific initialization can be added here if needed.
     } else if ( type == PIN_TYPE_FAN) {
         
     }
@@ -111,6 +114,12 @@ bool ControlService::getDHT11Readings(int pin, float &temperature, float &humidi
     return false; // Sensor not found or initialized
 }
 
+bool ControlService::getPIRState(int pin, bool &motionDetected)
+{
+    // For a typical PIR sensor, HIGH indicates motion detected.
+    motionDetected = (digitalRead(pin) == HIGH);
+    return true;
+}
 
 /// @brief Constructor (Modified to call setupPWM and initialize DHT)
 ControlService::ControlService(SerialService *ss) : ss(ss) { // Use initializer list
@@ -126,6 +135,9 @@ ControlService::ControlService(SerialService *ss) : ss(ss) { // Use initializer 
     declarePin("8dca5204-a0ac-4ec6-83f7-c3b8acdf6e5b", "891647d0-e5a8-4f02-bfce-a17facfa6e5c", 5, OUTPUT, PIN_TYPE_FAN); // Fan on pin 5 (PWM)
     // Declare DHT11 sensor - Example: DHT11 on pin 4
     declarePin("8dca5204-a0ac-4ec6-83f7-c3b8acdf6e5b", "9e569c3f-afed-41de-9758-99a7be8ce3d7", 4, INPUT_PULLUP, PIN_TYPE_DHT11); // DHT11 on pin 4
+    // Declare PIR sensor - Example: PIR sensor on pin 34
+    declarePin("94c4dab3-19bf-448a-90d5-b9b00ec0cda0", "31d0f257-2fbc-443e-8fbb-f066de81debd", 34, INPUT, PIN_TYPE_PIR); // PIR sensor on pin 15
+
 
     configurePins();
     // Attach PWM channel to the fan pin *after* configuring pin modes
@@ -267,44 +279,49 @@ void ControlService::handleCommand(JsonDocument doc, JsonDocument &response) {
 
 /// @brief Gets all sensor data in JSON format for all areas
 /// @return A JSON string containing sensor data for all areas
-String ControlService::getAllSensorDataJson()
-{
-    JsonDocument responseDoc; // Changed to DynamicJsonDocument
+String ControlService::getAllSensorDataJson() {
+    DynamicJsonDocument responseDoc(2048);  // Adjust size as needed
     responseDoc["status"] = "success";
     responseDoc["message"] = "Sensor data retrieved successfully for all areas";
     JsonArray areasArray = responseDoc.createNestedArray("areas");
 
-    for (auto const &areaPair : areaDevicesMap) // Iterate through each area in areaDevicesMap
-    {
-        const String &areaId = areaPair.first.c_str(); // Get areaId string
+    for (const auto &areaPair : areaDevicesMap) {
         JsonObject areaObject = areasArray.createNestedObject();
-        areaObject["areaId"] = areaId;
-        JsonArray sensorsArray = areaObject.createNestedArray("sensors"); // Create sensors array for this area
+        areaObject["areaId"] = areaPair.first;
+        JsonArray sensorsArray = areaObject.createNestedArray("sensors");
 
-        for (auto const &devicePair : areaPair.second) // Iterate through devices in the current area
-        {
+        for (const auto &devicePair : areaPair.second) {
             const DeviceEntry &deviceEntry = devicePair.second;
-            if (deviceEntry.type == PIN_TYPE_DHT11)
-            {
+            // Handle DHT11 sensor data
+            if (deviceEntry.type == PIN_TYPE_DHT11) {
                 JsonObject sensorObject = sensorsArray.createNestedObject();
                 sensorObject["deviceId"] = deviceEntry.deviceId;
-                sensorObject["type"] = "DHT11"; // Hardcoded DHT11 type for now, can be improved
-
-                float temperature = 0.0;
-                float humidity = 0.0;
-                if (getDHT11Readings(deviceEntry.value, temperature, humidity))
-                {
+                sensorObject["type"] = "DHT11";
+                float temperature = 0.0, humidity = 0.0;
+                if (getDHT11Readings(deviceEntry.value, temperature, humidity)) {
                     sensorObject["status"] = "success";
                     sensorObject["temperature_celsius"] = temperature;
                     sensorObject["humidity_percent"] = humidity;
-                }
-                else
-                {
+                } else {
                     sensorObject["status"] = "error";
                     sensorObject["message"] = "Failed to read sensor data";
                 }
             }
-            // Add other sensor types here in future else-if blocks
+            // Handle PIR sensor data
+            else if (deviceEntry.type == PIN_TYPE_PIR) {
+                JsonObject sensorObject = sensorsArray.createNestedObject();
+                sensorObject["deviceId"] = deviceEntry.deviceId;
+                sensorObject["type"] = "PIR";
+                bool motionDetected = false;
+                if (getPIRState(deviceEntry.value, motionDetected)) {
+                    sensorObject["status"] = "success";
+                    sensorObject["motion_detected"] = motionDetected;
+                } else {
+                    sensorObject["status"] = "error";
+                    sensorObject["message"] = "Failed to read PIR sensor";
+                }
+            }
+            // Handle other device types as needed…
         }
     }
 

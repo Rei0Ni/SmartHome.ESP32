@@ -10,11 +10,15 @@
 
 void RestAPI::onOTAProgress(size_t current, size_t final)
 {
-    // Log every 1 second and calculate percentage
-    if (millis() - ota_progress_millis > 1000)
+    // Check if 1 second has passed since the last update
+    if (millis() - ota_progress_millis > 100)
     {
         ota_progress_millis = millis();
 
+        // Toggle the built-in LED
+        digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+
+        // Calculate and log progress
         if (final > 0) { // Avoid division by zero if final size is unknown initially
             int percentage = (current * 100) / final;
             ss->printToSerial("OTA Progress: %d%% (%u/%u bytes)\n", percentage, current, final);
@@ -45,29 +49,35 @@ void RestAPI::handleOTAUpload(AsyncWebServerRequest* request, String filename, s
         if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {  // Start OTA process
             Update.printError(Serial);
             request->send(500, "text/plain", "OTA Begin Failed!");
+            otaResponseSent = true;
             return;
         }
-        ota_progress_millis = millis(); // Initialize the timer here at the start of OTA
+        ota_progress_millis = millis(); // Initialize timer at start of OTA
     }
 
     if (Update.write(data, len) != len) {  // Write firmware chunk
         Update.printError(Serial);
     } else {
-        onOTAProgress(Update.progress(), Update.size()); // Call onOTAProgress after successful write
+        onOTAProgress(Update.progress(), Update.size()); // Log progress
     }
 
     if (final) {  // Finalize update
         if (Update.end(true)) {
             Serial.println("OTA Update Success! Restarting...");
             request->send(200, "text/plain", "OTA Update Successful! Restarting...");
+            otaResponseSent = true;
+            digitalWrite(LED_BUILTIN, LOW); // Turn off LED before restart
             delay(100);
             ESP.restart();
         } else {
             Update.printError(Serial);
             request->send(500, "text/plain", "OTA Update Failed!");
+            otaResponseSent = true;
+            digitalWrite(LED_BUILTIN, LOW); // Turn off LED if update failed
         }
     }
 }
+
 
 /// @brief Constructor for RestAPI
 /// @param cs Pointer to the ControlService instance
@@ -93,11 +103,18 @@ void RestAPI::setupApi()
                [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total)
                { this->commandOnBody(request, data, len, index, total); });
 
-    server->on("/update", HTTP_POST, [](AsyncWebServerRequest* request) {},
+    server->on("/update", HTTP_POST,
+        // onRequest callback: called after the upload handler
+        [this](AsyncWebServerRequest *request) {
+            if (!otaResponseSent) {
+                request->send(200, "text/plain", "OTA Update Complete");
+            }
+            otaResponseSent = false;  // Reset flag for future requests
+        },
+        // onUpload callback: handle OTA data
         [this](AsyncWebServerRequest* request, String filename, size_t index, uint8_t* data, size_t len, bool final) {
             this->handleOTAUpload(request, filename, index, data, len, final);
-        },
-        nullptr
+        }
     );
 
     // TODO: Remove in Production (Test Purposes)

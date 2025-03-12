@@ -17,6 +17,10 @@
 #ifndef RestAPI_h
 #define RestAPI_h
 
+#ifndef LED_BUILTIN
+#define LED_BUILTIN 2  // Built in LED pin for ESP32
+#endif
+
 class SerialService;
 class ControlService;
 
@@ -30,6 +34,7 @@ private:
     JsonDocument jsonDocument;
     char buffer[1024];
 
+    bool otaResponseSent = false;
     unsigned long ota_progress_millis = 0;
 
     // void onOTAStart();
