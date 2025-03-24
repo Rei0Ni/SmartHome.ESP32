@@ -68,19 +68,19 @@ void MessageQueueService::publishMessage() {
 
     String jsonData = dataProviderFunction(); // Comment out dataProvider
     // String jsonData = "{\"test\":\"short\"}"; // **Very short, minimal JSON**
-    Serial.print("jsonData to publish: ");
-    Serial.print(jsonData + "\n");
+    // Serial.print("jsonData to publish: ");
+    // Serial.print(jsonData + "\n");
 
     // **Debug: Check connection state just before publish**
-    Serial.print("MQTT Client connected state before publish: ");
-    Serial.print(mqttClient.connected() + "\n"); // Will print 1 (true) if connected, 0 (false) if not
+    // Serial.print("MQTT Client connected state before publish: ");
+    // Serial.print(mqttClient.connected() + "\n"); // Will print 1 (true) if connected, 0 (false) if not
 
     if (mqttClient.publish(mqttTopic, jsonData.c_str())) {
-        Serial.print("Published to MQTT Topic: ");
-        Serial.print(mqttTopic);
-        Serial.print("\n");
-        Serial.print("Published to MQTT: ");
-        Serial.print(jsonData + "\n");
+        // Serial.print("Published to MQTT Topic: ");
+        // Serial.print(mqttTopic);
+        // Serial.print("\n");
+        // Serial.print("Published to MQTT: ");
+        // Serial.print(jsonData + "\n");
     } else {
         Serial.print("MQTT publish failed!\n");
     }
