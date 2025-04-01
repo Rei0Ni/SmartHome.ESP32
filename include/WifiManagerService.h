@@ -10,6 +10,7 @@
 #define WifiManagerService_h
 
 #include <WiFiManager.h>
+#include "I2CLedScreen.h"
 
 /**
  * @class WifiManagerService
@@ -25,7 +26,14 @@ class WifiManagerService
 {
 private:
     WiFiManager wm; ///< Instance of the WiFiManager library
-    
+    I2CLedScreen* lcd; ///< LCD screen instance
+    TaskHandle_t scrollTaskHandle = NULL;
+    TaskHandle_t apCredentialsTaskHandle = NULL;
+    SemaphoreHandle_t lcdMutex;
+
+    static void scrollTask(void *pvParameters); // FreeRTOS task function
+    static void apCredentialsTask(void *pvParameters);
+
     /**
      * @brief Stops both configuration and web portals
      * @private
@@ -36,7 +44,7 @@ private:
     void stopPortal();
 
 public:
-    WifiManagerService();
+    WifiManagerService(I2CLedScreen* lcd);
     ~WifiManagerService();
 
     /**
@@ -61,6 +69,21 @@ public:
      * - Device will enter configuration portal on next boot
      */
     void resetAndRestart();
+    void displayIPandPort(uint16_t port);
+    void displayAPCredentials(const char *ssid, const char *password, int &ssidScrollPos, int &passwordScrollPos);
+    void displayScrollingText(uint8_t row, const String &text, int &scrollPos);
+};
+
+struct TaskParams
+{
+    WifiManagerService *service;
+    uint16_t port;
+};
+
+struct APCredentialsParams {
+    WifiManagerService *service;
+    const char *ssid;
+    const char *password;
 };
 
 #endif
