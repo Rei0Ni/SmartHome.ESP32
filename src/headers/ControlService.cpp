@@ -14,8 +14,10 @@ using namespace std;
 
 /// @brief Sets up the PWM configuration using ESP32 LEDC (LED Control)
 void ControlService::setupPWM() {
-    // Configure LEDC PWM parameters
+    // Configure LEDC PWM parameters for fan
     ledcSetup(pwmChannel, pwmFrequencyHz, pwmResolutionBits); // Channel, Frequency, Resolution
+    // Configure LEDC PWM parameters for LED
+    ledcSetup(ledPwmChannel, pwmFrequencyHz, pwmResolutionBits);
 }
 
 /// @brief Toggles the state of a device pin (basic ON/OFF control - digitalWrite)
@@ -51,6 +53,30 @@ bool ControlService::controlFanSpeed(int pin, int speedPercentage) {
     }
 }
 
+/// @brief Controls LED brightness using PWM
+bool ControlService::controlLedBrightness(int pin, int brightness) {
+    try {
+        if (brightness >= 0 && brightness <= 255) {
+            // Use ledcWrite with the brightness value
+            setLedBrightnessPwm(pin, brightness);
+            ledBrightness[pin] = brightness; // Store the LED brightness
+            return true;
+        } else {
+            // ss->printToAll("Error: Invalid LED brightness. Must be between 0 and 255.");
+            return false;
+        }
+    } catch (const exception& e) {
+        // ss->printToAll("Error while controlling LED brightness: %S", e.what());
+        return false;
+    }
+}
+
+/// @brief Sets LED brightness using PWM with ESP32 LEDC
+void ControlService::setLedBrightnessPwm(int pin, int brightness) {
+    // Use ledcWrite with the brightness value
+    ledcWrite(ledPwmChannel, brightness);
+}
+
 /// @brief Declares a pin for a device
 void ControlService::declarePin(const char *areaId, const char *deviceId, int value, int mode, DeviceType type) {
     DeviceEntry entry = {deviceId, value, mode, type};
@@ -64,6 +90,8 @@ void ControlService::declarePin(const char *areaId, const char *deviceId, int va
         // Any additional PIR-specific initialization can be added here if needed.
     } else if ( type == PIN_TYPE_FAN) {
         
+    } else if (type == PIN_TYPE_LED) {
+        ledBrightness[value] = 255; // Initialize LED brightness to max
     }
 }
 
@@ -92,6 +120,9 @@ void ControlService::configurePins() {
     for (auto const& areaPair : areaDevicesMap) {
         for (auto const& devicePair : areaPair.second) {
             pinMode(devicePair.second.value, devicePair.second.mode);
+            if (devicePair.second.type == PIN_TYPE_LED) {
+                ledcAttachPin(devicePair.second.value, ledPwmChannel); // Attach LED pin to PWM channel
+            }
         }
     }
 }
@@ -191,67 +222,110 @@ void ControlService::handleCommand(JsonDocument doc, JsonDocument &response) {
             continue;
         }
 
+        int pin = getPinValue(areaId, device_id);
+        DeviceType type = getDeviceType(areaId, device_id);
+
+        if (pin == -1) {
+            deviceResponse["status"] = "error";
+            deviceResponse["message"] = String("Invalid device ID '") + device_id + "' or area '" + areaId + "'";
+            continue;
+        }
+
         if (strcmp(function_name, "toggle") == 0) {
-            JsonObject parameters = device["parameters"];
-            if (!parameters.containsKey("state")) {
-                deviceResponse["status"] = "error";
-                deviceResponse["message"] = "Missing 'state' parameter for 'toggle' function";
-                continue;
-            }
+            if (type == PIN_TYPE_FAN) {
+                JsonObject parameters = device["parameters"];
+                if (!parameters.containsKey("state")) {
+                    deviceResponse["status"] = "error";
+                    deviceResponse["message"] = "Missing 'state' parameter for 'toggle' function";
+                    continue;
+                }
 
-            bool state = parameters["state"];
-            int level = (state == true) ? HIGH : LOW;
+                bool state = parameters["state"];
+                int speedPercentage = (state == true) ? fanSpeeds[pin] : 0; // Maintain fan speed if turning on, otherwise set to 0
 
-            int pin = getPinValue(areaId, device_id);
-            if (pin == -1) {
-                deviceResponse["status"] = "error";
-                deviceResponse["message"] = String("Invalid device ID '") + device_id + "' or area '" + areaId + "'";
-                continue;
-            }
-
-            if (this->toggle(pin, level)) {
-                deviceResponse["status"] = "success";
-                deviceResponse["message"] = String("Toggled device '") + device_id + "' to state " + (state ? "on" : "off");
-                deviceResponse["power_state"] = (state ? "on" : "off"); // Add power_state to response
+                if (this->controlFanSpeed(pin, speedPercentage)) {
+                    deviceResponse["status"] = "success";
+                    deviceResponse["message"] = String("Toggled fan '") + device_id + "' to state " + (state ? "on" : "off");
+                    deviceResponse["power_state"] = (state ? "on" : "off"); // Add power_state to response
+                    deviceResponse["fan_speed"] = speedPercentage; // Add fan_speed to response
+                } else {
+                    deviceResponse["status"] = "error";
+                    deviceResponse["message"] = String("Toggle failed for fan '") + device_id + "'";
+                }
             } else {
-                deviceResponse["status"] = "error";
-                deviceResponse["message"] = String("Toggle failed for device '") + device_id + "'";
+                JsonObject parameters = device["parameters"];
+                if (!parameters.containsKey("state")) {
+                    deviceResponse["status"] = "error";
+                    deviceResponse["message"] = "Missing 'state' parameter for 'toggle' function";
+                    continue;
+                }
+
+                bool state = parameters["state"];
+                int level = (state == true) ? HIGH : LOW;
+
+                if (this->toggle(pin, level)) {
+                    deviceResponse["status"] = "success";
+                    deviceResponse["message"] = String("Toggled device '") + device_id + "' to state " + (state ? "on" : "off");
+                    deviceResponse["power_state"] = (state ? "on" : "off"); // Add power_state to response
+                    if (type == PIN_TYPE_LED) {
+                        int brightness = (state == true) ? ledBrightness[pin] : 0; // Maintain brightness if turning on, otherwise set to 0
+                        controlLedBrightness(pin, brightness); // Apply brightness
+                        deviceResponse["brightness"] = brightness; // Add brightness to response
+                    }
+                } else {
+                    deviceResponse["status"] = "error";
+                    deviceResponse["message"] = String("Toggle failed for device '") + device_id + "'";
+                }
             }
         } else if (strcmp(function_name, "setspeed") == 0) {
-            JsonObject parameters = device["parameters"];
-            if (!parameters.containsKey("speed")) {
-                deviceResponse["status"] = "error";
-                deviceResponse["message"] = "Missing 'speed' parameter for 'setspeed' function";
-                continue;
-            }
+            if (type == PIN_TYPE_FAN) {
+                JsonObject parameters = device["parameters"];
+                if (!parameters.containsKey("speed")) {
+                    deviceResponse["status"] = "error";
+                    deviceResponse["message"] = "Missing 'speed' parameter for 'setspeed' function";
+                    continue;
+                }
 
-            int speedPercentage = parameters["speed"]; // **Expect speed as an integer percentage (0-100) now**
+                int speedPercentage = parameters["speed"]; // **Expect speed as an integer percentage (0-100) now**
 
-            int pin = getPinValue(areaId, device_id);
-            if (pin == -1) {
-                deviceResponse["status"] = "error";
-                deviceResponse["message"] = String("Invalid device ID '") + device_id + "' or area '" + areaId + "' for fan speed control";
-                continue;
-            }
-
-            if (this->controlFanSpeed(pin, speedPercentage)) { // **Call controlFanSpeed with speedPercentage**
-                deviceResponse["status"] = "success";
-                deviceResponse["message"] = String("Set fan '") + device_id + "' speed to " + speedPercentage + "%"; // Update message to show percentage
-                deviceResponse["fan_speed"] = speedPercentage; // Add fan_speed to response
-                deviceResponse["power_state"] = (speedPercentage > 0) ? "on" : "off"; // Add power_state to response
+                if (this->controlFanSpeed(pin, speedPercentage)) { // **Call controlFanSpeed with speedPercentage**
+                    deviceResponse["status"] = "success";
+                    deviceResponse["message"] = String("Set fan '") + device_id + "' speed to " + speedPercentage + "%"; // Update message to show percentage
+                    deviceResponse["fan_speed"] = speedPercentage; // Add fan_speed to response
+                    deviceResponse["power_state"] = (speedPercentage > 0) ? "on" : "off"; // Add power_state to response
+                } else {
+                    deviceResponse["status"] = "error";
+                    deviceResponse["message"] = String("Failed to set speed for fan '") + device_id + "'";
+                }
             } else {
                 deviceResponse["status"] = "error";
-                deviceResponse["message"] = String("Failed to set speed for fan '") + device_id + "'";
+                deviceResponse["message"] = String("Function 'setspeed' is not applicable for device type");
             }
-        }  else if (strcmp(function_name, "getReadings") == 0) { // New function to get sensor readings
-            int pin = getPinValue(areaId, device_id);
-            if (pin == -1) {
-                deviceResponse["status"] = "error";
-                deviceResponse["message"] = String("Invalid device ID '") + device_id + "' or area '" + areaId + "' for sensor readings";
-                continue;
-            }
+        } else if (strcmp(function_name, "setbrightness") == 0) {
+            if (type == PIN_TYPE_LED) {
+                JsonObject parameters = device["parameters"];
+                if (!parameters.containsKey("brightness")) {
+                    deviceResponse["status"] = "error";
+                    deviceResponse["message"] = "Missing 'brightness' parameter for 'setbrightness' function";
+                    continue;
+                }
 
-            DeviceType type = getDeviceType(areaId, device_id);
+                int brightness = parameters["brightness"];
+
+                if (this->controlLedBrightness(pin, brightness)) {
+                    deviceResponse["status"] = "success";
+                    deviceResponse["message"] = String("Set LED '") + device_id + "' brightness to " + brightness;
+                    deviceResponse["brightness"] = brightness;
+                    deviceResponse["power_state"] = (brightness > 0) ? "on" : "off";
+                } else {
+                    deviceResponse["status"] = "error";
+                    deviceResponse["message"] = String("Failed to set brightness for LED '") + device_id + "'";
+                }
+            } else {
+                deviceResponse["status"] = "error";
+                deviceResponse["message"] = String("Function 'setbrightness' is not applicable for device type");
+            }
+        } else if (strcmp(function_name, "getReadings") == 0) { // New function to get sensor readings
             if (type == PIN_TYPE_DHT11) {
                 float temperature = 0.0;
                 float humidity = 0.0;

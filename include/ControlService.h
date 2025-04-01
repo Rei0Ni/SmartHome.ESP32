@@ -37,17 +37,20 @@ private:
     std::map<std::string, std::map<std::string, DeviceEntry>> areaDevicesMap;
     std::map<int, int> digitalPinStates; // Store digital pin states
     std::map<int, int> fanSpeeds;        // Store fan speeds (percentage)
+    std::map<int, int> ledBrightness;    // Store LED brightness (0-255)
 
     // PWM Configuration - ESP32 LEDC
     const int pwmChannel = 0;         // LEDC channel (0-15)
     const int pwmFrequencyHz = 25000; // PWM frequency (e.g., 25 kHz for fans)
     const int pwmResolutionBits = 8;  // PWM resolution (8 bits = 0-255)
+    const int ledPwmChannel = 1;      // LED PWM channel (0-15, different from fan)
 
     // DHT Sensor Management
     std::map<int, DHT *> dhtSensors; // Map of DHT sensor objects, key is pin number
 
     void setupPWM(); // Configure PWM
     void configurePins(); // Configure pin modes from device map
+    void setLedBrightnessPwm(int pin, int brightness); // Set LED brightness using PWM
 
 public:
     ControlService(SerialService *ss); // Constructor
@@ -63,6 +66,7 @@ public:
     bool controlFanSpeed(int pin, int speedPercentage);                  // Control fan speed using PWM
     bool getDHT11Readings(int pin, float &temperature, float &humidity); // Read DHT11 sensor data
     bool getPIRState(int pin, bool &motionDetected);                     // Read PIR sensor state
+    bool controlLedBrightness(int pin, int brightness);                  // Control LED brightness
 };
 
 #endif // ControlService_h
