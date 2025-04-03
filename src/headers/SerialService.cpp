@@ -4,6 +4,7 @@
 SerialService::SerialService(WifiManagerService *wm)
 {
     this->wm = wm;
+    Serial.begin(115200);
 }
 
 SerialService::~SerialService()

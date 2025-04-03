@@ -23,7 +23,9 @@ MessageQueueService mq(&cs, &ss, 5000, "192.168.1.9", 1883, "sensor_data", "mqtt
 void setup()
 {
   ss.Initialize(115200, &server);
+  cs.Initialize(); // Hardware init here
   wm.Initialize("P@ssw0rd");
+
   // screen.begin();
   // screen.displayText("Hello ESP32!");
 
