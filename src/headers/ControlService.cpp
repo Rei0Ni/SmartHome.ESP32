@@ -117,6 +117,9 @@ void ControlService::declarePin(const char *areaId, const char *deviceId, int va
         dht->begin();
         dhtSensors[value] = dht;
         ss->printToAll("Initialized DHT11 sensor on pin %d\n", value);
+    } else if (type == PIN_TYPE_PIR) {
+        pinMode(value, mode); // Or INPUT_PULLUP, depending on your sensor's needs
+        ss->printToAll("Initialized PIR sensor on pin %d\n", value);
     }
 
     areaDevicesMap[areaId][deviceId] = {deviceId, value, mode, type, pwmChannel};
